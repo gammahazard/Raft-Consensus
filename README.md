@@ -287,6 +287,15 @@ STEP DOWN immediately!              │
 
 **What's happening:** With 2/3 nodes dead, the cluster cannot reach majority. It **halts safely** rather than accepting writes that might violate consistency. This is the Raft safety guarantee in action.
 
+---
+
+#### Log Resync Demo (Animated)
+<p align="center">
+  <img src="docs/assets/n3-resync-demo.webp" alt="N3 Log Resync Demo" width="700"/>
+</p>
+
+**What's happening:** Node 3 was partitioned while 20 sensor readings were added. When healed, N3 syncs all 20 entries instantly — showing Raft's automatic log reconciliation.
+
 </details>
 
 ## 🧪 Testing
