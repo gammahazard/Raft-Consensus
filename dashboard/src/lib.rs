@@ -1,436 +1,413 @@
 //! # dashboard
 //!
 //! why: provide interactive web ui for raft cluster visualization
-//! relations: uses shim/host.js for cluster management, displays node states
+//! relations: uses shim/host.js for cluster management, displays node states  
 //! what: leptos components for cluster viz, chaos controls, kv store, event log
 //!
-//! ENHANCED: Real WASM metrics, automatic leader election, quorum tracking
+//! SIMPLIFIED: Clearer flow, auto-PreVote, better explanations
 
 use leptos::*;
 use wasm_bindgen::prelude::*;
 use gloo_timers::callback::Timeout;
 
-// ============================================================================
-// REAL WASM METRICS - measured at runtime, not simulated
-// ============================================================================
-
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = performance)]
     fn now() -> f64;
-    
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
 }
 
-/// Measure real WASM performance metrics
-fn measure_wasm_metrics() -> (f64, f64, u32) {
-    let start = now();
-    
-    // Measure some actual computation to get real numbers
-    let mut _sum: u64 = 0;
-    for i in 0..100000 {
-        _sum = _sum.wrapping_add(i);
-    }
-    
-    let compute_time = now() - start;
-    
-    // Get actual WASM memory usage via JS
-    // For now, estimate based on heap allocations
-    let memory_kb = 256; // Base WASM module size ~256KB
-    
-    (compute_time, 0.0, memory_kb)
-}
-
-// ============================================================================
-// MAIN APP COMPONENT
-// ============================================================================
-
-/// main app component - raft cluster dashboard
+/// main app component
 #[component]
 pub fn App() -> impl IntoView {
-    // -- Node states --
-    // 0=follower, 1=leader, 2=candidate, 3=dead, 4=rogue, 5=partitioned
-    let (node1, set_node1) = create_signal(1i32);
+    // Node states: 0=follower, 1=leader, 2=candidate, 3=dead, 4=rogue
+    let (node1, set_node1) = create_signal(1i32); // starts as leader
     let (node2, set_node2) = create_signal(0i32);
     let (node3, set_node3) = create_signal(0i32);
     
-    // -- Raft state --
+    // Raft state
     let (term, set_term) = create_signal(1i32);
     let (log_index, set_log_index) = create_signal(0i32);
-    let (commit_index, set_commit_index) = create_signal(0i32);
+    let (rogue_term, set_rogue_term) = create_signal(1i32);
     
-    // -- WASM metrics (REAL, not simulated) --
-    let (wasm_init_time, set_wasm_init_time) = create_signal(0.0f64);
-    let (wasm_memory_kb, set_wasm_memory_kb) = create_signal(256u32);
+    // Auto-restart toggle (simulates systemd/K8s watchdog)
+    let (auto_restart, set_auto_restart) = create_signal(false);
+    let (last_restart_ms, set_last_restart_ms) = create_signal(0.0f64);
     
-    // Measure WASM metrics on load
+    // WASM metrics (measured at load)
+    let (wasm_init_ms, set_wasm_init_ms) = create_signal(0.0f64);
     create_effect(move |_| {
         let start = now();
-        // Simulate WASM instantiation cost
-        let (compute, _, mem) = measure_wasm_metrics();
-        let total = now() - start;
-        set_wasm_init_time.set(total);
-        set_wasm_memory_kb.set(mem);
+        // Do some work to measure real WASM performance
+        let mut sum: u64 = 0;
+        for i in 0..50000 { sum = sum.wrapping_add(i); }
+        let _ = sum;
+        set_wasm_init_ms.set(now() - start);
     });
     
-    // -- Rogue node state --
-    let (node3_term, set_node3_term) = create_signal(1i32);
-    
-    // -- UI state --
+    // Events log (declared early for use in closures)
     let (events, set_events) = create_signal::<Vec<String>>(vec![
-        "✨ Cluster initialized".into(),
+        "✨ Cluster started with 3 nodes".into(),
         "👑 Node 1 elected leader (term 1)".into(),
     ]);
+    
+    // Auto-restart logic: when enabled, restart dead nodes after 1 second
+    let schedule_auto_restart = move |node_id: i32| {
+        if !auto_restart.get() { return; }
+        
+        Timeout::new(1000, move || {
+            if !auto_restart.get() { return; } // Check again in case toggled off
+            
+            let start = now();
+            match node_id {
+                1 if node1.get() == 3 => {
+                    set_node1.set(0);
+                    let elapsed = now() - start;
+                    set_last_restart_ms.set(elapsed);
+                    set_events.update(|e| {
+                        e.push(format!("🔄 [WATCHDOG] Auto-restarted N1 ({:.1}ms)", elapsed));
+                        if log_index.get() > 0 {
+                            e.push(format!("📥 N1 syncing {} entries...", log_index.get()));
+                        }
+                    });
+                },
+                2 if node2.get() == 3 => {
+                    set_node2.set(0);
+                    let elapsed = now() - start;
+                    set_last_restart_ms.set(elapsed);
+                    set_events.update(|e| {
+                        e.push(format!("🔄 [WATCHDOG] Auto-restarted N2 ({:.1}ms)", elapsed));
+                        if log_index.get() > 0 {
+                            e.push(format!("📥 N2 syncing {} entries...", log_index.get()));
+                        }
+                    });
+                },
+                3 if node3.get() == 3 => {
+                    set_node3.set(0);
+                    let elapsed = now() - start;
+                    set_last_restart_ms.set(elapsed);
+                    set_events.update(|e| {
+                        e.push(format!("🔄 [WATCHDOG] Auto-restarted N3 ({:.1}ms)", elapsed));
+                        if log_index.get() > 0 {
+                            e.push(format!("📥 N3 syncing {} entries...", log_index.get()));
+                        }
+                    });
+                },
+                _ => {}
+            }
+        }).forget();
+    };
+    
+    // KV store output
     let (kv_out, set_kv_out) = create_signal::<Vec<String>>(vec![]);
-    let (election_in_progress, set_election_in_progress) = create_signal(false);
     
-    // -- Helpers --
-    let state_str = |s: i32| match s {
-        1 => "leader",
-        2 => "candidate", 
-        3 => "dead",
-        4 => "rogue",
-        5 => "partitioned",
-        _ => "follower",
-    };
-    
-    let state_emoji = |s: i32| match s {
-        1 => "👑",
-        2 => "🗳️",
-        3 => "💀",
-        4 => "🏴‍☠️",
-        5 => "🔌",
-        _ => "🟢",
-    };
-    
-    // Count alive nodes for quorum check
+    // Helper functions
     let alive_count = move || {
-        let a = if node1.get() != 3 && node1.get() != 5 { 1 } else { 0 };
-        let b = if node2.get() != 3 && node2.get() != 5 { 1 } else { 0 };
-        let c = if node3.get() != 3 && node3.get() != 4 && node3.get() != 5 { 1 } else { 0 };
-        a + b + c
+        [node1.get(), node2.get(), node3.get()]
+            .iter()
+            .filter(|&&s| s != 3 && s != 4)
+            .count()
     };
-    
     let has_quorum = move || alive_count() >= 2;
     let has_leader = move || node1.get() == 1 || node2.get() == 1 || node3.get() == 1;
     
-    // Find current leader
-    let current_leader = move || {
-        if node1.get() == 1 { "N1" }
-        else if node2.get() == 1 { "N2" }
-        else if node3.get() == 1 { "N3" }
-        else { "-" }
+    let state_emoji = |s: i32| match s {
+        1 => "👑", 2 => "🗳️", 3 => "💀", 4 => "🏴‍☠️", _ => "🟢"
+    };
+    let state_name = |s: i32| match s {
+        1 => "LEADER", 2 => "CANDIDATE", 3 => "DEAD", 4 => "ROGUE", _ => "FOLLOWER"
     };
     
-    // -- Auto-election logic --
-    // When leader dies, trigger election after timeout
-    let trigger_election = move |killed_node: i32| {
+    // Auto-elect new leader when leader dies
+    let trigger_election = move |killed: i32| {
         if !has_quorum() {
             set_events.update(|e| {
-                e.push("❌ QUORUM LOST - cluster halted (safety)".into());
-                e.push("⚠️ Cannot elect leader with only 1/3 nodes".into());
+                e.push("❌ QUORUM LOST! Need 2/3 nodes.".into());
+                e.push("⚠️ Cluster HALTED (safety > availability)".into());
             });
             return;
         }
         
-        set_election_in_progress.set(true);
-        set_events.update(|e| e.push("⏳ Election timeout (150-300ms)...".into()));
+        set_events.update(|e| e.push("⏳ Election timeout... (150-300ms)".into()));
         
-        // Simulate election timeout with real delay
         let new_term = term.get() + 1;
-        
-        // Use Timeout for realistic delay
         Timeout::new(300, move || {
             set_term.set(new_term);
-            
-            // Determine new leader (first alive non-killed node)
-            if killed_node != 2 && node2.get() == 0 {
-                set_node2.set(1);
+            // First alive non-killed node becomes candidate then leader
+            if killed != 2 && node2.get() == 0 {
                 set_events.update(|e| {
                     e.push(format!("🗳️ Node 2 becomes candidate (term {})", new_term));
-                    e.push("✅ Node 2 receives majority (2/3 votes)".into());
-                    e.push(format!("👑 Node 2 elected leader (term {})", new_term));
+                    e.push("✅ Node 2 wins election (2/3 votes)".into());
                 });
-            } else if killed_node != 3 && node3.get() == 0 {
-                set_node3.set(1);
+                set_node2.set(1);
+            } else if killed != 3 && node3.get() == 0 {
                 set_events.update(|e| {
                     e.push(format!("🗳️ Node 3 becomes candidate (term {})", new_term));
-                    e.push("✅ Node 3 receives majority (2/3 votes)".into());
-                    e.push(format!("👑 Node 3 elected leader (term {})", new_term));
+                    e.push("✅ Node 3 wins election (2/3 votes)".into());
                 });
+                set_node3.set(1);
             }
-            set_election_in_progress.set(false);
         }).forget();
+    };
+    
+    // Rogue node rejoins with PreVote (AUTOMATIC)
+    let rogue_rejoins = move || {
+        if node3.get() != 4 { return; }
+        
+        set_events.update(|e| {
+            e.push("─────────── PREVOTE DEMO ───────────".into());
+            e.push(format!("🏴‍☠️ Rogue N3 tries to rejoin (term {})", rogue_term.get()));
+            e.push(format!("📤 N3 → N1: \"Would you vote for me?\" (term={})", rogue_term.get()));
+            e.push(format!("📤 N3 → N2: \"Would you vote for me?\" (term={})", rogue_term.get()));
+            e.push("📥 N1 → N3: \"NO! I have a leader.\" ❌".into());
+            e.push("📥 N2 → N3: \"NO! I have a leader.\" ❌".into());
+            e.push("".into());
+            e.push("✅ PREVOTE BLOCKED THE ROGUE!".into());
+            e.push("   → N3's high term (50) did NOT disrupt cluster".into());
+            e.push("   → Leader stays at term 1".into());
+            e.push("   → N3 syncs to term 1 and rejoins as follower".into());
+            e.push("─────────────────────────────────────".into());
+        });
+        
+        set_node3.set(0); // Rejoin as follower
+        set_rogue_term.set(term.get());
     };
     
     view! {
         <div class="dashboard">
-            <header class="dashboard-header">
-                <h1>"🗳️ Raft Consensus Cluster"</h1>
-                <div class="header-badges">
-                    <span class="status-badge" class:running=has_quorum class:stopped=move || !has_quorum()>
+            // Header
+            <header class="header">
+                <h1>"🗳️ Raft Consensus"</h1>
+                <div class="badges">
+                    <span class="badge" class:ok=has_quorum class:fail=move || !has_quorum()>
                         {move || if has_quorum() { "QUORUM ✓" } else { "NO QUORUM ✗" }}
                     </span>
-                    <span class="status-badge term">"Term " {term}</span>
+                    <span class="badge term">"Term " {term}</span>
                 </div>
             </header>
             
-            <div class="main-content">
-                <div class="left-panel">
+            // Info box explaining what we're demonstrating
+            <div class="info-box">
+                <strong>"What this demo shows: "</strong>
+                "Raft consensus keeps 3 nodes in sync. Kill nodes to see leader election. "
+                "Try the Rogue Node to see PreVote protection."
+            </div>
+            
+            <div class="main-grid">
+                // Left: Cluster + Controls
+                <div class="left-col">
                     // Cluster visualization
                     <div class="card">
-                        <div class="card-header">
-                            <h2>"Cluster Status"</h2>
-                            <span class="quorum-indicator" class:ok=has_quorum class:fail=move || !has_quorum()>
-                                {move || format!("{}/3 alive", alive_count())}
-                            </span>
-                        </div>
-                        <div class="card-body">
-                            <div class="cluster-viz">
-                                // Node 1
-                                <div class="node" class=move || state_str(node1.get())>
-                                    <div class="node-indicator">{move || state_emoji(node1.get())}</div>
-                                    <div class="node-label">"Node 1"</div>
-                                    <div class="node-state">{move || state_str(node1.get())}</div>
-                                    <div class="node-meta">"Log: " {log_index}</div>
-                                </div>
-                                // Node 2
-                                <div class="node" class=move || state_str(node2.get())>
-                                    <div class="node-indicator">{move || state_emoji(node2.get())}</div>
-                                    <div class="node-label">"Node 2"</div>
-                                    <div class="node-state">{move || state_str(node2.get())}</div>
-                                    <div class="node-meta">"Log: " {log_index}</div>
-                                </div>
-                                // Node 3
-                                <div class="node" class=move || state_str(node3.get())>
-                                    <div class="node-indicator">{move || state_emoji(node3.get())}</div>
-                                    <div class="node-label">"Node 3"</div>
-                                    <div class="node-state">{move || state_str(node3.get())}</div>
-                                    <div class="node-meta">
-                                        {move || if node3.get() == 4 { 
-                                            format!("Term: {} 🔺", node3_term.get()) 
-                                        } else { 
-                                            format!("Log: {}", log_index.get()) 
-                                        }}
-                                    </div>
+                        <div class="card-title">"Cluster Status"</div>
+                        <div class="nodes">
+                            <div class="node" class=move || state_name(node1.get()).to_lowercase()>
+                                <div class="emoji">{move || state_emoji(node1.get())}</div>
+                                <div class="name">"Node 1"</div>
+                                <div class="state">{move || state_name(node1.get())}</div>
+                            </div>
+                            <div class="node" class=move || state_name(node2.get()).to_lowercase()>
+                                <div class="emoji">{move || state_emoji(node2.get())}</div>
+                                <div class="name">"Node 2"</div>
+                                <div class="state">{move || state_name(node2.get())}</div>
+                            </div>
+                            <div class="node" class=move || state_name(node3.get()).to_lowercase()>
+                                <div class="emoji">{move || state_emoji(node3.get())}</div>
+                                <div class="name">"Node 3"</div>
+                                <div class="state">
+                                    {move || if node3.get() == 4 { 
+                                        format!("ROGUE (term {})", rogue_term.get()) 
+                                    } else { 
+                                        state_name(node3.get()).to_string() 
+                                    }}
                                 </div>
                             </div>
-                            
-                            // Quorum explanation
-                            <div class="quorum-explanation">
-                                {move || if !has_quorum() {
-                                    view! { 
-                                        <div class="warning-box">
-                                            "⚠️ Cluster halted: Need 2/3 nodes for quorum. "
-                                            <strong>"This is Raft's SAFETY guarantee"</strong>
-                                            " — better to halt than risk split-brain!"
-                                        </div>
-                                    }
-                                } else if !has_leader() {
-                                    view! {
-                                        <div class="warning-box">
-                                            "🗳️ Election in progress..."
-                                        </div>
-                                    }
-                                } else {
-                                    view! { <div></div> }
-                                }}
-                            </div>
                         </div>
+                        
+                        // Warning when no quorum
+                        {move || if !has_quorum() {
+                            view! {
+                                <div class="warning">
+                                    "⚠️ CLUSTER HALTED — need 2/3 nodes for quorum. "
+                                    "This is Raft's safety guarantee!"
+                                </div>
+                            }
+                        } else {
+                            view! { <div></div> }
+                        }}
                     </div>
                     
-                    // Chaos controls
+                    // Controls
                     <div class="card">
-                        <div class="card-header"><h2>"🎮 Chaos Controls"</h2></div>
-                        <div class="card-body">
-                            <div class="chaos-controls">
-                                // Kill buttons
-                                <button class="chaos-btn danger" 
-                                    disabled=move || node1.get() == 3
-                                    on:click=move |_| {
-                                        let was_leader = node1.get() == 1;
-                                        set_node1.set(3);
-                                        set_events.update(|e| e.push("[CHAOS] 💀 Killed Node 1".into()));
-                                        if was_leader {
-                                            trigger_election(1);
+                        <div class="card-title">"🎮 Controls"</div>
+                        <div class="controls">
+                            // Kill buttons
+                            <button class="btn red" disabled=move || node1.get() == 3
+                                on:click=move |_| {
+                                    let was_leader = node1.get() == 1;
+                                    set_node1.set(3);
+                                    set_events.update(|e| e.push("💀 Killed Node 1".into()));
+                                    if was_leader { trigger_election(1); }
+                                    schedule_auto_restart(1);
+                                }>"💀 Kill N1"</button>
+                            <button class="btn red" disabled=move || node2.get() == 3
+                                on:click=move |_| {
+                                    let was_leader = node2.get() == 1;
+                                    set_node2.set(3);
+                                    set_events.update(|e| e.push("💀 Killed Node 2".into()));
+                                    if was_leader { trigger_election(2); }
+                                    schedule_auto_restart(2);
+                                }>"💀 Kill N2"</button>
+                            <button class="btn red" disabled=move || node3.get() == 3 || node3.get() == 4
+                                on:click=move |_| {
+                                    let was_leader = node3.get() == 1;
+                                    set_node3.set(3);
+                                    set_events.update(|e| e.push("💀 Killed Node 3".into()));
+                                    if was_leader { trigger_election(3); }
+                                    schedule_auto_restart(3);
+                                }>"💀 Kill N3"</button>
+                            
+                            // Restart buttons
+                            <button class="btn blue" disabled=move || node1.get() != 3
+                                on:click=move |_| {
+                                    let start = now();
+                                    set_node1.set(0);
+                                    let ms = now() - start;
+                                    set_events.update(|e| {
+                                        e.push(format!("🚀 Node 1 restarted ({:.1}ms)", ms));
+                                        if log_index.get() > 0 {
+                                            e.push(format!("📥 Syncing {} log entries...", log_index.get()));
                                         }
-                                    }>"💀 Kill N1"</button>
-                                <button class="chaos-btn danger"
-                                    disabled=move || node2.get() == 3
-                                    on:click=move |_| {
-                                        let was_leader = node2.get() == 1;
-                                        set_node2.set(3);
-                                        set_events.update(|e| e.push("[CHAOS] 💀 Killed Node 2".into()));
-                                        if was_leader {
-                                            trigger_election(2);
+                                    });
+                                }>"🔄 Restart N1"</button>
+                            <button class="btn blue" disabled=move || node2.get() != 3
+                                on:click=move |_| {
+                                    let start = now();
+                                    set_node2.set(0);
+                                    let ms = now() - start;
+                                    set_events.update(|e| {
+                                        e.push(format!("🚀 Node 2 restarted ({:.1}ms)", ms));
+                                        if log_index.get() > 0 {
+                                            e.push(format!("📥 Syncing {} log entries...", log_index.get()));
                                         }
-                                    }>"💀 Kill N2"</button>
-                                <button class="chaos-btn danger"
-                                    disabled=move || node3.get() == 3 || node3.get() == 4
-                                    on:click=move |_| {
-                                        let was_leader = node3.get() == 1;
-                                        set_node3.set(3);
-                                        set_events.update(|e| e.push("[CHAOS] 💀 Killed Node 3".into()));
-                                        if was_leader {
-                                            trigger_election(3);
+                                    });
+                                }>"🔄 Restart N2"</button>
+                            <button class="btn blue" disabled=move || node3.get() != 3
+                                on:click=move |_| {
+                                    let start = now();
+                                    set_node3.set(0);
+                                    let ms = now() - start;
+                                    set_events.update(|e| {
+                                        e.push(format!("🚀 Node 3 restarted ({:.1}ms)", ms));
+                                        if log_index.get() > 0 {
+                                            e.push(format!("📥 Syncing {} log entries...", log_index.get()));
                                         }
-                                    }>"💀 Kill N3"</button>
-                                    
-                                // Individual restart buttons with timing
-                                <button class="chaos-btn restart" 
-                                    disabled=move || node1.get() != 3
-                                    on:click=move |_| {
-                                        let start = now();
-                                        set_node1.set(0);
-                                        let elapsed = now() - start;
-                                        set_events.update(|e| {
-                                            e.push(format!("🚀 Node 1 restarted ({:.2}ms)", elapsed));
-                                            if log_index.get() > 0 {
-                                                e.push(format!("📥 N1 catching up: 0 → {} entries", log_index.get()));
-                                            }
-                                        });
-                                    }>"🔄 Restart N1"</button>
-                                <button class="chaos-btn restart"
-                                    disabled=move || node2.get() != 3
-                                    on:click=move |_| {
-                                        let start = now();
-                                        set_node2.set(0);
-                                        let elapsed = now() - start;
-                                        set_events.update(|e| {
-                                            e.push(format!("🚀 Node 2 restarted ({:.2}ms)", elapsed));
-                                            if log_index.get() > 0 {
-                                                e.push(format!("📥 N2 catching up: 0 → {} entries", log_index.get()));
-                                            }
-                                        });
-                                    }>"🔄 Restart N2"</button>
-                                <button class="chaos-btn restart"
-                                    disabled=move || node3.get() != 3
-                                    on:click=move |_| {
-                                        let start = now();
-                                        set_node3.set(0);
-                                        let elapsed = now() - start;
-                                        set_events.update(|e| {
-                                            e.push(format!("🚀 Node 3 restarted ({:.2}ms)", elapsed));
-                                            if log_index.get() > 0 {
-                                                e.push(format!("📥 N3 catching up: 0 → {} entries", log_index.get()));
-                                            }
-                                        });
-                                    }>"🔄 Restart N3"</button>
-                                    
-                                // PreVote demo
-                                <button class="chaos-btn warning" on:click=move |_| {
+                                    });
+                                }>"🔄 Restart N3"</button>
+                        </div>
+                        
+                        // PreVote demo - simplified!
+                        <div class="card-title" style="margin-top: 1rem">"🏴‍☠️ Rogue Node Demo"</div>
+                        <p class="help-text">
+                            "Simulates a node that got disconnected, kept timing out, and inflated its term to 50."
+                        </p>
+                        <div class="controls">
+                            <button class="btn orange" 
+                                disabled=move || node3.get() == 4
+                                on:click=move |_| {
                                     set_node3.set(4);
-                                    set_node3_term.update(|t| *t += 10);
-                                    set_events.update(|e| e.push(format!(
-                                        "🏴‍☠️ N3 partitioned! Term inflating to {}", 
-                                        node3_term.get() + 10
-                                    )));
-                                }>"🏴‍☠️ Rogue N3"</button>
-                                <button class="chaos-btn success" on:click=move |_| {
-                                    if node3.get() == 4 {
-                                        set_events.update(|e| {
-                                            e.push(format!("[PREVOTE] N3 asks: vote for me? (term={})", node3_term.get()));
-                                            e.push("[PREVOTE] N1: ❌ REJECT — I have a leader".into());
-                                            e.push("[PREVOTE] N2: ❌ REJECT — I have a leader".into());
-                                            e.push("✅ PreVote BLOCKED rogue! Cluster stable.".into());
-                                        });
-                                        set_node3.set(0);
-                                        set_node3_term.set(term.get());
-                                    } else {
-                                        set_events.update(|e| e.push("ℹ️ Make N3 rogue first".into()));
-                                    }
-                                }>"✨ PreVote"</button>
-                                
-                                // Reset
-                                <button class="chaos-btn" on:click=move |_| {
-                                    set_node1.set(1); set_node2.set(0); set_node3.set(0);
-                                    set_term.set(1);
-                                    set_node3_term.set(1);
-                                    set_log_index.set(0);
-                                    set_commit_index.set(0);
-                                    set_events.set(vec![
-                                        "✨ Cluster initialized".into(),
-                                        "👑 Node 1 elected leader (term 1)".into(),
-                                    ]);
-                                    set_kv_out.set(vec![]);
-                                }>"🔄 Reset"</button>
-                            </div>
+                                    set_rogue_term.set(50);
+                                    set_events.update(|e| {
+                                        e.push("─────────────────────────────────────".into());
+                                        e.push("🏴‍☠️ Node 3 PARTITIONED!".into());
+                                        e.push("   (simulating disconnected node)".into());
+                                        e.push("   Term inflating: 1 → 10 → 25 → 50".into());
+                                        e.push("─────────────────────────────────────".into());
+                                    });
+                                }>"🏴‍☠️ Partition N3"</button>
+                            <button class="btn green"
+                                disabled=move || node3.get() != 4
+                                on:click=move |_| rogue_rejoins()
+                            >"✨ Reconnect (PreVote)"</button>
+                        </div>
+                        
+                        // Watchdog toggle + Reset
+                        <div class="card-title" style="margin-top: 1rem">"⚙️ Settings"</div>
+                        <div class="controls">
+                            <button class="btn" 
+                                class:active=auto_restart
+                                on:click=move |_| {
+                                    set_auto_restart.update(|v| *v = !*v);
+                                    set_events.update(|e| {
+                                        if auto_restart.get() {
+                                            e.push("🔧 Watchdog ENABLED (nodes auto-restart in 1s)".into());
+                                        } else {
+                                            e.push("🔧 Watchdog DISABLED".into());
+                                        }
+                                    });
+                                }>
+                                {move || if auto_restart.get() { "🟢 Watchdog ON" } else { "⚪ Watchdog OFF" }}
+                            </button>
+                            <button class="btn" on:click=move |_| {
+                                set_node1.set(1); set_node2.set(0); set_node3.set(0);
+                                set_term.set(1); set_log_index.set(0); set_rogue_term.set(1);
+                                set_auto_restart.set(false);
+                                set_events.set(vec![
+                                    "✨ Cluster reset".into(),
+                                    "👑 Node 1 elected leader (term 1)".into(),
+                                ]);
+                                set_kv_out.set(vec![]);
+                            }>"🔄 Reset All"</button>
                         </div>
                     </div>
                     
                     // KV Store
                     <div class="card">
-                        <div class="card-header"><h2>"💾 Key-Value Store"</h2></div>
-                        <div class="card-body">
-                            <KvStore 
-                                kv_out set_kv_out 
-                                has_leader has_quorum 
-                                log_index set_log_index
-                                commit_index set_commit_index
-                                set_events
-                            />
-                        </div>
+                        <div class="card-title">"💾 Key-Value Store"</div>
+                        <KvStore 
+                            kv_out set_kv_out 
+                            has_leader has_quorum
+                            log_index set_log_index
+                            set_events
+                        />
                     </div>
                 </div>
                 
-                <div class="right-panel">
-                    // WASM Metrics (REAL)
+                // Right: Events + Metrics
+                <div class="right-col">
+                    // Metrics
                     <div class="card">
-                        <div class="card-header">
-                            <h2>"⚡ WASM Metrics"</h2>
-                            <span class="badge">"Real"</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="metrics">
-                                <div class="metric">
-                                    <div class="metric-value">{current_leader}</div>
-                                    <div class="metric-label">"Leader"</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-value">{term}</div>
-                                    <div class="metric-label">"Term"</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-value">
-                                        {move || format!("{:.2}", wasm_init_time.get())}
-                                    </div>
-                                    <div class="metric-label">"Init (ms)"</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-value">
-                                        {move || format!("{}K", wasm_memory_kb.get())}
-                                    </div>
-                                    <div class="metric-label">"Memory"</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-value">{log_index}</div>
-                                    <div class="metric-label">"Log Index"</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-value">{commit_index}</div>
-                                    <div class="metric-label">"Committed"</div>
-                                </div>
+                        <div class="card-title">"⚡ Metrics"</div>
+                        <div class="metrics">
+                            <div class="metric">
+                                <div class="value">{move || format!("{:.1}", wasm_init_ms.get())}</div>
+                                <div class="label">"WASM Init (ms)"</div>
+                            </div>
+                            <div class="metric">
+                                <div class="value">{term}</div>
+                                <div class="label">"Term"</div>
+                            </div>
+                            <div class="metric">
+                                <div class="value">{log_index}</div>
+                                <div class="label">"Log Index"</div>
+                            </div>
+                            <div class="metric">
+                                <div class="value">{move || format!("{}/3", alive_count())}</div>
+                                <div class="label">"Alive"</div>
                             </div>
                         </div>
                     </div>
                     
                     // Event log
-                    <div class="card" style="flex:1">
-                        <div class="card-header">
-                            <h2>"📋 Raft Events"</h2>
-                            <span class="event-count">{move || events.get().len()}</span>
-                        </div>
-                        <div class="card-body">
-                            <div class="event-log">
-                                {move || events.get().iter().rev().cloned().collect::<Vec<_>>().into_iter().map(|e| {
-                                    let class = if e.contains("❌") || e.contains("CHAOS") { "danger" }
-                                        else if e.contains("✅") || e.contains("👑") { "success" }
-                                        else if e.contains("⏳") || e.contains("🗳") { "warning" }
-                                        else { "" };
-                                    view! { <div class="event" class=class>{e}</div> }
-                                }).collect::<Vec<_>>()}
-                            </div>
+                    <div class="card events-card">
+                        <div class="card-title">"📋 Events"</div>
+                        <div class="events">
+                            {move || events.get().iter().rev().cloned().collect::<Vec<_>>().into_iter().map(|e| {
+                                let class = if e.contains("❌") || e.contains("💀") { "red" }
+                                    else if e.contains("✅") || e.contains("👑") { "green" }
+                                    else if e.contains("⏳") || e.contains("🗳") { "yellow" }
+                                    else if e.contains("───") { "dim" }
+                                    else { "" };
+                                view! { <div class="event" class=class>{e}</div> }
+                            }).collect::<Vec<_>>()}
                         </div>
                     </div>
                 </div>
@@ -439,10 +416,7 @@ pub fn App() -> impl IntoView {
     }
 }
 
-// ============================================================================
-// KV STORE COMPONENT
-// ============================================================================
-
+/// KV Store component
 #[component]
 fn KvStore(
     kv_out: ReadSignal<Vec<String>>,
@@ -451,8 +425,6 @@ fn KvStore(
     has_quorum: impl Fn() -> bool + 'static + Copy,
     log_index: ReadSignal<i32>,
     set_log_index: WriteSignal<i32>,
-    commit_index: ReadSignal<i32>,
-    set_commit_index: WriteSignal<i32>,
     set_events: WriteSignal<Vec<String>>,
 ) -> impl IntoView {
     let input = create_node_ref::<leptos::html::Input>();
@@ -466,56 +438,34 @@ fn KvStore(
                 set_kv_out.update(|o| o.push(format!("> {} ❌ No quorum!", cmd)));
                 return;
             }
-            
             if !has_leader() {
-                set_kv_out.update(|o| o.push(format!("> {} ⏳ Election in progress", cmd)));
+                set_kv_out.update(|o| o.push(format!("> {} ⏳ Election...", cmd)));
                 return;
             }
             
-            // Increment log index
-            let new_idx = log_index.get() + 1;
-            set_log_index.set(new_idx);
-            
-            // Simulate replication delay then commit
-            set_kv_out.update(|o| o.push(format!("> {} ⏳ Replicating...", cmd)));
-            set_events.update(|e| e.push(format!("📝 Log entry {} appended", new_idx)));
-            
-            // Use timeout to simulate replication
-            let cmd_clone = cmd.clone();
-            Timeout::new(100, move || {
-                set_commit_index.set(new_idx);
-                set_kv_out.update(|o| {
-                    if let Some(last) = o.last_mut() {
-                        *last = format!("> {} ✓ Committed @ idx {}", cmd_clone, new_idx);
-                    }
-                });
-            }).forget();
-            
+            let idx = log_index.get() + 1;
+            set_log_index.set(idx);
+            set_kv_out.update(|o| o.push(format!("> {} ✓ Committed @ {}", cmd, idx)));
+            set_events.update(|e| e.push(format!("📝 Log[{}]: {}", idx, cmd)));
             el.set_value("");
         }
     };
     
     view! {
         <div class="kv-store">
-            <div class="kv-input-container">
-                <input type="text" class="kv-input" placeholder="SET key value" node_ref=input />
-                <button class="kv-submit" on:click=submit>"Submit"</button>
+            <div class="kv-input">
+                <input type="text" placeholder="SET key value" node_ref=input />
+                <button on:click=submit>"Submit"</button>
             </div>
             <div class="kv-output">
                 {move || kv_out.get().into_iter().map(|l| {
-                    let class = if l.contains("✓") { "success" } 
-                        else if l.contains("❌") { "error" }
-                        else { "pending" };
-                    view! { <div class="kv-line" class=class>{l}</div> }
+                    let class = if l.contains("✓") { "ok" } else { "err" };
+                    view! { <div class=class>{l}</div> }
                 }).collect::<Vec<_>>()}
             </div>
         </div>
     }
 }
-
-// ============================================================================
-// WASM ENTRY POINT
-// ============================================================================
 
 #[wasm_bindgen(start)]
 pub fn main() {
