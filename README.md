@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-in_development-yellow" alt="Status"/>
+  <img src="https://img.shields.io/badge/status-completed-brightgreen" alt="Status"/>
   <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen" alt="Tests"/>
   <a href="https://raft-consensus-kappa.vercel.app"><img src="https://img.shields.io/badge/demo-live-blue" alt="Demo"/></a>
   <img src="https://img.shields.io/badge/nodes-3-blue" alt="Nodes"/>
