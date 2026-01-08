@@ -47,6 +47,13 @@
     pointer-events: none;
 }
 
+/* Mobile: Disable sticky tooltips - hover doesn't work well with touch */
+@media (hover: none) and (pointer: coarse) {
+    [data-tip]:hover::after {
+        display: none;
+    }
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--bg);
