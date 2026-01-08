@@ -4,6 +4,14 @@
  * why: orchestrate wasm node lifecycle and provide wasi capability mapping
  * relations: uses network.js and filesystem.js, instantiates raft-wasm modules
  * what: WasiHost class, wasm instantiation timing, cluster management
+ * 
+ * WASI COMPONENT INTEGRATION:
+ * The transpiled WASI component is available at ./wasm/raft.js (via jco).
+ * Use: import { raftApi } from './wasm/raft.js'
+ * Exports: init(nodeId, nodeIds), tick(), onMessage(from, msg), 
+ *          submitCommand(bytes), getStatus()
+ * 
+ * For full WASI component usage, see shim/raft-bridge.js
  */
 
 import { network } from './network.js';

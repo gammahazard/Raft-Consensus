@@ -15,9 +15,23 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-in_development-yellow" alt="Status"/>
+  <img src="https://img.shields.io/badge/tests-120%20passing-brightgreen" alt="Tests"/>
+  <a href="https://raft-consensus-kappa.vercel.app"><img src="https://img.shields.io/badge/demo-live-blue" alt="Demo"/></a>
   <img src="https://img.shields.io/badge/nodes-3-blue" alt="Nodes"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License"/>
   <img src="https://img.shields.io/badge/mobile-responsive-blueviolet" alt="Mobile Responsive"/>
+</p>
+
+<p align="center">
+  <img src="docs/assets/dashboard-overview.png" alt="Raft Consensus Dashboard" width="700"/>
+</p>
+
+<p align="center">
+  <em>👆 Static overview | 👇 Full demo: elections, failover, PreVote, watchdog recovery</em>
+</p>
+
+<p align="center">
+  <img src="docs/assets/raft-demo.webp" alt="Raft Demo Animation" width="700"/>
 </p>
 
 ---
@@ -226,6 +240,54 @@ STEP DOWN immediately!              │
 ```
 
 **The "wow" moment:** Partition the cluster 1 vs 2 — the minority halts while majority continues. This is Byzantine fault safety in action.
+
+<details>
+<summary><h3>📸 View Demo Scenario Screenshots</h3></summary>
+
+#### Leader Failover
+<p align="center">
+  <img src="docs/assets/leader-failover.png" alt="Leader Failover - Node 2 elected after N1 killed" width="700"/>
+</p>
+
+**What's happening:** Node 1 (leader) was killed. Node 2 won the election and became the new leader in Term 2. Cluster continues with 2/3 quorum.
+
+---
+
+#### Node Recovery & Log Sync
+<p align="center">
+  <img src="docs/assets/node-recovery.png" alt="Node Recovery - N1 rejoins as follower" width="700"/>
+</p>
+
+**What's happening:** Node 1 restarted and automatically rejoined as a follower. Its log will sync with the current leader.
+
+---
+
+#### Rogue Node (Network Partition)
+<p align="center">
+  <img src="docs/assets/rogue-node.png" alt="Rogue Node - N3 partitioned with high term" width="700"/>
+</p>
+
+**What's happening:** Node 3 was partitioned. In isolation, it times out repeatedly, inflating its term to 50. The cluster (N1 + N2) continues unaffected.
+
+---
+
+#### PreVote Blocking
+<p align="center">
+  <img src="docs/assets/prevote-blocking.png" alt="PreVote Blocking - N3's high term rejected" width="700"/>
+</p>
+
+**What's happening:** When N3 tries to rejoin, it asks "Would you vote for me at term 50?" The other nodes say "NO — we have a healthy leader." N3 cannot disrupt the cluster.
+
+---
+
+#### Quorum Loss (Safety Halt)
+<p align="center">
+  <img src="docs/assets/quorum-loss.png" alt="Quorum Loss - Cluster halted" width="700"/>
+</p>
+
+**What's happening:** With 2/3 nodes dead, the cluster cannot reach majority. It **halts safely** rather than accepting writes that might violate consistency. This is the Raft safety guarantee in action.
+
+</details>
 
 ## 🧪 Testing
 
