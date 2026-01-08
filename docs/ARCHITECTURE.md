@@ -31,7 +31,7 @@ The Raft Consensus Cluster demonstrates distributed consensus in the browser usi
 │  │              WASM Nodes (x3)                         │    │
 │  │  ┌─────────┐ ┌─────────┐ ┌─────────┐                │    │
 │  │  │raft-core│ │raft-    │ │raft-wasm│                │    │
-│  │  │         │ │storage  │ │(bindgen)│                │    │
+│  │  │         │ │storage  │ │  (WASI) │                │    │
 │  │  └─────────┘ └─────────┘ └─────────┘                │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
