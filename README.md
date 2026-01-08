@@ -68,8 +68,9 @@
 |-----------|------------|---------|
 | **raft-core** | Pure Rust | State machine, elections, log replication |
 | **raft-storage** | Rust + std::fs | Persistence trait (IndexedDB in browser) |
-| **raft-wasm** | wasm-bindgen | WASM exports for JavaScript host |
-| **shim/** | JavaScript | WASI polyfills: BroadcastChannel, IndexedDB |
+| **raft-wasm** | wit-bindgen + WASI 0.2 | Component model exports (same binary: browser + Pi) |
+| **wit/** | WIT Interface | Contract between WASM component and host |
+| **shim/** | JavaScript + jco | WASI polyfills: BroadcastChannel, IndexedDB |
 | **dashboard/** | Leptos + Trunk | Security console UI with chaos controls |
 
 ```
@@ -121,13 +122,18 @@ raft-consensus/
 │   ├── raft-storage/       # persistence abstraction
 │   │   └── src/lib.rs      # Storage trait, FileStorage impl
 │   │
-│   └── raft-wasm/          # wasm-bindgen exports
-│       └── src/lib.rs      # javascript-callable node lifecycle
+│   └── raft-wasm/          # WASI 0.2 component exports
+│       └── src/lib.rs      # wit-bindgen implementation
+│
+├── wit/
+│   └── raft.wit            # component interface definition
 │
 ├── shim/                   # javascript wasi polyfills
 │   ├── host.js             # WasiHost: instantiates wasm nodes
 │   ├── network.js          # BroadcastChannel virtual network
-│   └── filesystem.js       # IndexedDB virtual filesystem
+│   ├── filesystem.js       # IndexedDB virtual filesystem
+│   ├── raft-bridge.js      # High-level WASI component wrapper
+│   └── wasm/               # jco transpiled component (raft.js)
 │
 ├── dashboard/              # leptos web ui
 │   ├── src/lib.rs          # cluster viz, kv store, event log
@@ -155,9 +161,14 @@ trunk serve
 # opens http://localhost:8080
 ```
 
-**Run tests:**
+**Run tests (120 total):**
 ```powershell
+# Run all tests
 cargo test --workspace
+
+# Comprehensive tests
+cargo test -p raft-core --test comprehensive_tests    # 84 tests
+cargo test -p raft-storage --test comprehensive_tests # 36 tests
 ```
 
 ## 💾 Key-Value Store Demo
@@ -218,14 +229,28 @@ STEP DOWN immediately!              │
 
 ## 🧪 Testing
 
+**120 comprehensive tests** covering all Raft scenarios:
+
 ```powershell
-# rust tests (raft-core logic)
+# Run all tests
 cargo test --workspace
 
-# javascript shim tests
-cd shim
-npm test
+# Individual test suites
+cargo test -p raft-core --test comprehensive_tests    # 84 tests: elections, voting, replication
+cargo test -p raft-storage --test comprehensive_tests # 36 tests: persistence, crash recovery
 ```
+
+| Test Category | Count | Coverage |
+|---------------|-------|----------|
+| Initialization | 4 | Node startup, cluster membership |
+| Quorum | 6 | 3/5/7 node clusters, majority voting |
+| Elections | 10 | Timeout, vote counting, term handling |
+| Vote Requests | 9 | Grant/reject logic, log comparison |
+| Leader State | 4 | next_index, match_index |
+| AppendEntries | 12 | Log replication, consistency checks |
+| PreVote | 11 | Disruptive server prevention |
+| Commit | 8 | Quorum-based commit, safety |
+| Crash Recovery | 20+ | State persistence, log replay |
 
 ## 🍓 Hardware Demo (Coming Soon)
 
