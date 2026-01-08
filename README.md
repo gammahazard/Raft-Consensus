@@ -26,14 +26,6 @@
   <img src="docs/assets/dashboard-overview.png" alt="Raft Consensus Dashboard" width="700"/>
 </p>
 
-<p align="center">
-  <em>👆 Static overview | 👇 Full demo: elections, failover, PreVote, watchdog recovery</em>
-</p>
-
-<p align="center">
-  <img src="docs/assets/raft-demo.webp" alt="Raft Demo Animation" width="700"/>
-</p>
-
 ---
 
 ## 📑 Contents
