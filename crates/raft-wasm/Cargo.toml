@@ -1,0 +1,16 @@
+[package]
+name = "raft-wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+raft-core = { path = "../raft-core" }
+raft-storage = { path = "../raft-storage" }
+
+# WASM-specific dependencies (to be added in Phase 1)
+# wit-bindgen = "0.22"

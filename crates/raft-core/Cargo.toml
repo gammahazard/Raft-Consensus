@@ -1,0 +1,12 @@
+[package]
+name = "raft-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# Testing dependencies will go here

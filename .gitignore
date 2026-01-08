@@ -1,0 +1,28 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node
+node_modules/
+package-lock.json
+
+# Trunk build output
+/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# WASM artifacts
+*.wasm
+!src/**/*.wasm
+
+# Environment
+.env
+.env.local
