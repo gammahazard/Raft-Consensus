@@ -41,6 +41,9 @@ pub fn App() -> impl IntoView {
     let (n2_restart, set_n2_restart) = create_signal(0.0f64);
     let (n3_restart, set_n3_restart) = create_signal(0.0f64);
     
+    // Sensor simulation counter
+    let (sensor_count, set_sensor_count) = create_signal(0i32);
+    
     let (events, set_events) = create_signal::<Vec<String>>(vec![
         "✨ Cluster started".into(),
         "👑 Node 1 elected leader (term 1)".into(),
@@ -135,6 +138,12 @@ pub fn App() -> impl IntoView {
         });
         set_node3.set(0);
         set_rogue_term.set(term.get());
+        // Sync N3's log to catch up
+        let current_log = log_index.get();
+        if current_log > n3_log.get() {
+            set_events.update(|e| e.push(format!("📥 N3 synced {} entries", current_log - n3_log.get())));
+            set_n3_log.set(current_log);
+        }
     };
     
     // KV submit
@@ -157,6 +166,31 @@ pub fn App() -> impl IntoView {
         set_kv_out.update(|o| o.push(format!("> {} ✓ @{}", cmd, idx)));
         set_events.update(|e| e.push(format!("📝 Log[{}]: {}", idx, cmd)));
     };
+    
+    // Sensor simulation - tick once per call
+    let tick_sensor = move || {
+        if !has_quorum() || !has_leader() { 
+            set_events.update(|e| e.push("⚠️ [SENSOR] Data LOST - no quorum/leader!".into()));
+            return; 
+        }
+        
+        let count = sensor_count.get() + 1;
+        set_sensor_count.set(count);
+        
+        // Mock sensor data
+        let temp = 20 + (count % 10);
+        let humidity = 40 + (count % 20);
+        
+        let idx = log_index.get() + 1;
+        set_log_index.set(idx);
+        if is_alive(node1.get()) { set_n1_log.set(idx); }
+        if is_alive(node2.get()) { set_n2_log.set(idx); }
+        if is_alive(node3.get()) { set_n3_log.set(idx); }
+        
+        set_kv_out.update(|o| o.push(format!("> sensor_{} t={} h={} ✓@{}", count, temp, humidity, idx)));
+        set_events.update(|e| e.push(format!("🌡️ Sensor[{}]: temp={} hum={}", idx, temp, humidity)));
+    };
+    
     
     view! {
         <div class="dashboard">
@@ -337,11 +371,16 @@ pub fn App() -> impl IntoView {
                                 }>
                                 {move || if auto_restart.get() { "🟢 Watchdog ON" } else { "⚪ Watchdog OFF" }}
                             </button>
+                            <button class="btn" 
+                                data-tip="Generate one sensor reading. Kill a node, click repeatedly, restart to see catch-up."
+                                on:click=move |_| tick_sensor()
+                            >"🌡️ Sensor"</button>
                             <button class="btn" data-tip="Reset to initial state."
                                 on:click=move |_| {
                                     set_node1.set(1); set_node2.set(0); set_node3.set(0);
                                     set_term.set(1); set_log_index.set(0);
                                     set_rogue_term.set(1); set_auto_restart.set(false);
+                                    set_sensor_count.set(0);
                                     // Reset per-node state
                                     set_n1_log.set(0); set_n2_log.set(0); set_n3_log.set(0);
                                     set_n1_restart.set(0.0); set_n2_restart.set(0.0); set_n3_restart.set(0.0);
