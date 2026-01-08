@@ -360,6 +360,13 @@ This project is part of a **Reliability Triad** demonstrating industrial-grade s
 | `develop` | Integration | Preview |
 | `feature/*` | Feature work | — |
 
+## 📚 Documentation
+
+- [**Architecture Deep Dive**](docs/ARCHITECTURE.md) — System design, component responsibilities, data flow
+- [**Raft Specification**](docs/RAFT_SPEC.md) — PreVote protocol, elections, log replication, safety guarantees
+- [**WASI Mapping**](docs/WASI_MAPPING.md) — How std::fs and std::net map to browser APIs
+- [**Hardware Setup**](docs/HARDWARE_SETUP.md) — Raspberry Pi cluster guide (coming soon)
+
 ## 📜 License
 
 MIT © 2026
