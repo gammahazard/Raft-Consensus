@@ -159,20 +159,50 @@ body {
 .nodes {
     display: flex;
     justify-content: center;
-    gap: 1rem;
+    gap: 2rem;
+}
+
+/* Vertical dividers between nodes */
+.node:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -1rem;
+    top: 20%;
+    height: 60%;
+    width: 1px;
+    background: var(--border);
 }
 
 .node {
     text-align: center;
-    padding: 1rem 0.75rem;
+    padding: 1rem 1rem;
     background: var(--bg);
     border: 2px solid var(--border);
     border-radius: 12px;
-    width: 110px;
+    width: 120px;
     display: flex;
     flex-direction: column;
     align-items: center;
     transition: all 0.2s;
+    position: relative;
+}
+
+/* Mobile: stack vertically */
+@media (max-width: 500px) {
+    .nodes {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .node:not(:last-child)::after {
+        display: none;
+    }
+
+    .node {
+        width: 90%;
+        max-width: 200px;
+    }
 }
 
 .node .emoji {
