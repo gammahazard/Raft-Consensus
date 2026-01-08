@@ -1,0 +1,13 @@
+{
+    "buildCommand": ". $HOME/.cargo/env && cargo install trunk wasm-bindgen-cli && cd dashboard && trunk build --release --public-url /",
+    "outputDirectory": "dashboard/dist",
+    "installCommand": "curl https://sh.rustup.rs -sSf | sh -s -- -y && . $HOME/.cargo/env && rustup target add wasm32-unknown-unknown",
+    "framework": null,
+    "ignoreCommand": "git diff --quiet HEAD^ HEAD -- dashboard/ shim/ crates/ vercel.json Cargo.toml",
+    "git": {
+        "deploymentEnabled": {
+            "main": true,
+            "develop": true
+        }
+    }
+}
