@@ -991,3 +991,213 @@ mod edge_cases {
         assert!(node.has_quorum());
     }
 }
+
+// =============================================================================
+// SECTION 13: PREVOTE PROTOCOL TESTS (Raft Thesis Section 9.6)
+// =============================================================================
+
+mod prevote {
+    use super::*;
+
+    #[test]
+    fn start_prevote_becomes_precandidate() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        assert_eq!(node.state, NodeState::Follower);
+        
+        node.start_prevote();
+        
+        assert_eq!(node.state, NodeState::PreCandidate);
+        assert_eq!(node.prevotes_received, vec![1]); // voted for self
+        // term should NOT be incremented!
+        assert_eq!(node.current_term, 0);
+    }
+
+    #[test]
+    fn prevote_request_has_proposed_term() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        node.current_term = 5;
+        
+        let msg = node.start_prevote();
+        
+        match msg {
+            RaftMessage::PreVoteRequest { term, candidate_id, .. } => {
+                assert_eq!(term, 6); // proposed term = current + 1
+                assert_eq!(candidate_id, 1);
+            }
+            _ => panic!("expected PreVoteRequest"),
+        }
+        // but actual term stays at 5!
+        assert_eq!(node.current_term, 5);
+    }
+
+    #[test]
+    fn prevote_quorum_triggers_real_election() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        node.start_prevote();
+        
+        // receive pre-vote from node 2
+        let should_start_election = node.handle_prevote_response(1, true, 2);
+        
+        assert!(should_start_election);
+        // node should still be PreCandidate, caller starts real election
+        assert_eq!(node.state, NodeState::PreCandidate);
+    }
+
+    #[test]
+    fn prevote_rejection_stays_precandidate() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        node.start_prevote();
+        
+        // receive pre-vote rejection from nodes 2 and 3
+        let result1 = node.handle_prevote_response(1, false, 2);
+        let result2 = node.handle_prevote_response(1, false, 3);
+        
+        assert!(!result1);
+        assert!(!result2);
+        assert_eq!(node.state, NodeState::PreCandidate);
+        assert_eq!(node.prevotes_received.len(), 1); // only self
+    }
+
+    #[test]
+    fn grant_prevote_when_no_leader_heard() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        // no recent heartbeat
+        node.last_heartbeat_time = None;
+        
+        let (response, _) = node.handle_prevote_request(1, 2, 0, 0);
+        
+        match response {
+            RaftMessage::PreVoteResponse { vote_granted, .. } => {
+                assert!(vote_granted, "should grant pre-vote when no leader");
+            }
+            _ => panic!("expected PreVoteResponse"),
+        }
+    }
+
+    #[test]
+    fn reject_prevote_when_leader_active() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        // simulate recent heartbeat from leader
+        node.record_heartbeat(1000);
+        
+        let (response, _) = node.handle_prevote_request(1, 2, 0, 0);
+        
+        match response {
+            RaftMessage::PreVoteResponse { vote_granted, .. } => {
+                assert!(!vote_granted, "should reject pre-vote when leader is active");
+            }
+            _ => panic!("expected PreVoteResponse"),
+        }
+    }
+
+    #[test]
+    fn prevote_does_not_reset_election_timer() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        
+        let (_, should_reset) = node.handle_prevote_request(1, 2, 0, 0);
+        
+        assert!(!should_reset, "pre-vote should not reset election timer");
+    }
+
+    #[test]
+    fn reject_prevote_with_stale_log() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        node.log.push(LogEntry::new(5, 1, vec![1]));
+        
+        // candidate has log with lower term
+        let (response, _) = node.handle_prevote_request(5, 2, 1, 2);
+        
+        match response {
+            RaftMessage::PreVoteResponse { vote_granted, .. } => {
+                assert!(!vote_granted, "should reject pre-vote with stale log");
+            }
+            _ => panic!("expected PreVoteResponse"),
+        }
+    }
+
+    // =========================================================================
+    // THE KEY TEST: Disruptive Server Prevention
+    // =========================================================================
+    
+    #[test]
+    fn disruptive_server_cannot_disrupt_cluster() {
+        // Scenario: Node 3 gets disconnected, keeps timing out, raises term to 50
+        // With PreVote, when it rejoins, other nodes reject its pre-vote
+        // because they still hear from the leader
+        
+        // Node 1 is the healthy follower that recently heard from leader
+        let mut node1 = RaftNode::new(1, vec![1, 2, 3]);
+        node1.current_term = 5;
+        node1.record_heartbeat(1000);
+        
+        // Node 3 is the "rogue" node with inflated term, trying to start election
+        // It sends a PreVoteRequest with proposed term 51 (its term 50 + 1)
+        let (response, _) = node1.handle_prevote_request(
+            51,  // proposed term (way higher)
+            3,   // candidate_id (rogue node)
+            0,   // last_log_index
+            0,   // last_log_term
+        );
+        
+        match response {
+            RaftMessage::PreVoteResponse { vote_granted, term } => {
+                // Node 1 should REJECT because it heard from leader recently
+                assert!(!vote_granted, "healthy node should reject rogue's pre-vote");
+                // Node 1's term should NOT change
+                assert_eq!(term, 5, "term should not be affected by pre-vote");
+            }
+            _ => panic!("expected PreVoteResponse"),
+        }
+        
+        // Node 1's term should still be 5 (not updated to 51!)
+        assert_eq!(node1.current_term, 5, "term should be protected from rogue node");
+    }
+
+    #[test]
+    fn real_election_after_successful_prevote() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        
+        // Phase 1: PreVote
+        node.start_prevote();
+        assert_eq!(node.current_term, 0); // not incremented
+        
+        let should_start = node.handle_prevote_response(1, true, 2);
+        assert!(should_start);
+        
+        // Phase 2: Real election (only if pre-vote succeeded)
+        let vote_req = node.start_election();
+        
+        assert_eq!(node.state, NodeState::Candidate);
+        assert_eq!(node.current_term, 1); // NOW incremented
+        
+        match vote_req {
+            RaftMessage::VoteRequest { term, .. } => {
+                assert_eq!(term, 1);
+            }
+            _ => panic!("expected VoteRequest"),
+        }
+    }
+
+    #[test]
+    fn become_follower_clears_prevotes() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        node.start_prevote();
+        node.prevotes_received.push(2);
+        
+        node.become_follower(5);
+        
+        assert!(node.prevotes_received.is_empty());
+    }
+
+    #[test]
+    fn has_prevote_quorum_check() {
+        let mut node = RaftNode::new(1, vec![1, 2, 3]);
+        
+        node.prevotes_received = vec![1]; // only self
+        assert!(!node.has_prevote_quorum());
+        
+        node.prevotes_received = vec![1, 2]; // 2/3 = quorum
+        assert!(node.has_prevote_quorum());
+    }
+}
+

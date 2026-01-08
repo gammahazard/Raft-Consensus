@@ -16,29 +16,29 @@
     --text-primary: #e6edf3;
     --text-secondary: #8b949e;
     --text-muted: #484f58;
-
+    
     /* status colors */
     --leader-color: #58a6ff;
     --follower-color: #3fb950;
     --candidate-color: #d29922;
     --dead-color: #f85149;
-
+    
     /* accent */
     --accent-primary: #58a6ff;
     --accent-success: #3fb950;
     --accent-warning: #d29922;
     --accent-danger: #f85149;
-
+    
     /* typography */
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-
+    
     /* spacing */
     --gap-sm: 0.5rem;
     --gap-md: 1rem;
     --gap-lg: 1.5rem;
     --gap-xl: 2rem;
-
+    
     /* borders */
     --radius-sm: 4px;
     --radius-md: 8px;
@@ -46,9 +46,7 @@
 }
 
 /* -- reset -- */
-*,
-*::before,
-*::after {
+*, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -196,22 +194,9 @@ body {
     opacity: 0.5;
 }
 
-.node.rogue {
-    border-color: var(--accent-warning);
-    animation: shake 0.5s infinite;
-    box-shadow: 0 0 20px rgba(210, 153, 34, 0.5);
-}
-
 @keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.6;
-    }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
 
 .node-indicator {
@@ -238,10 +223,6 @@ body {
 
 .node.dead .node-indicator {
     background: var(--dead-color);
-}
-
-.node.rogue .node-indicator {
-    background: var(--accent-warning);
 }
 
 .node-label {
@@ -298,11 +279,6 @@ body {
 .chaos-btn.success:hover {
     border-color: var(--accent-success);
     color: var(--accent-success);
-}
-
-.chaos-btn.warning:hover {
-    border-color: var(--accent-warning);
-    color: var(--accent-warning);
 }
 
 /* -- kv store -- */
@@ -451,28 +427,28 @@ body {
     .dashboard {
         padding: var(--gap-md);
     }
-
+    
     .cluster-viz {
         flex-direction: row;
         gap: var(--gap-md);
         padding: var(--gap-md);
     }
-
+    
     .node {
         padding: var(--gap-sm);
         min-width: 80px;
     }
-
+    
     .node-indicator {
         width: 36px;
         height: 36px;
         font-size: 1.25rem;
     }
-
+    
     .chaos-controls {
         grid-template-columns: repeat(2, 1fr);
     }
-
+    
     .main-content {
         grid-template-columns: 1fr;
     }

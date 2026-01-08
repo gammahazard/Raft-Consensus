@@ -191,7 +191,28 @@ The dashboard includes an interactive key-value store to demonstrate log replica
 | **Kill Leader** | Triggers new election | Leader failover |
 | **Network Partition** | Isolate node(s) | Split-brain safety |
 | **Slow Network** | 500ms latency | Election timeout behavior |
+| **Rogue Node** | Disconnected node with high term | **PreVote protection** ✨ |
 | **Restart All** | Recover cluster | Auto-sync verification |
+
+### ✨ PreVote Protocol Demo
+
+The "Rogue Node" demo showcases our **PreVote** implementation (Raft Thesis Section 9.6):
+
+```
+Scenario: Node 3 gets disconnected for a while
+─────────────────────────────────────────────────────────────────
+Without PreVote:                    │ With PreVote (our impl):
+                                    │
+Node 3 keeps timing out,            │ Node 3 times out but only
+incrementing term to 50.            │ sends "would you vote for me?"
+                                    │
+When reconnected, Node 3's          │ Other nodes reply "NO — we
+high term forces leader to          │ have a healthy leader."
+STEP DOWN immediately!              │
+                                    │ Node 3's term stays unchanged.
+❌ Cluster disrupted for no         │ ✅ Cluster stays stable!
+   good reason                      │
+```
 
 **The "wow" moment:** Partition the cluster 1 vs 2 — the minority halts while majority continues. This is Byzantine fault safety in action.
 

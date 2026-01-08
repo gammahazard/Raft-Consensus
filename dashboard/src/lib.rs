@@ -11,10 +11,11 @@ use web_sys::HtmlInputElement;
 /// main app component - raft cluster dashboard
 #[component]
 pub fn App() -> impl IntoView {
-    // node states: 0=follower, 1=leader, 2=candidate, 3=dead
+    // node states: 0=follower, 1=leader, 2=candidate, 3=dead, 4=rogue (PreVote demo)
     let (node1, set_node1) = create_signal(1i32); // starts as leader
     let (node2, set_node2) = create_signal(0i32);
     let (node3, set_node3) = create_signal(0i32);
+    let (node3_term, set_node3_term) = create_signal(1i32); // rogue node's inflated term
     let (term, set_term) = create_signal(1i32);
     let (events, set_events) = create_signal::<Vec<String>>(vec![]);
     let (kv_out, set_kv_out) = create_signal::<Vec<String>>(vec![]);
@@ -23,6 +24,7 @@ pub fn App() -> impl IntoView {
         1 => "leader",
         2 => "candidate",
         3 => "dead",
+        4 => "rogue",
         _ => "follower",
     };
     
@@ -30,6 +32,7 @@ pub fn App() -> impl IntoView {
         1 => "👑",
         2 => "🗳️",
         3 => "💀",
+        4 => "🏴‍☠️",
         _ => "🟢",
     };
     
@@ -85,6 +88,7 @@ pub fn App() -> impl IntoView {
                                 }>"💀 Kill N3"</button>
                                 <button class="chaos-btn success" on:click=move |_| {
                                     set_node1.set(0); set_node2.set(0); set_node3.set(0);
+                                    set_node3_term.set(term.get());
                                     set_events.update(|e| e.push("[CHAOS] all restarted".into()));
                                 }>"🔄 Restart All"</button>
                                 <button class="chaos-btn" on:click=move |_| {
@@ -92,9 +96,31 @@ pub fn App() -> impl IntoView {
                                     set_node1.set(0); set_node2.set(1);
                                     set_events.update(|e| e.push("[RAFT] new leader elected".into()));
                                 }>"🗳️ Election"</button>
+                                <button class="chaos-btn warning" on:click=move |_| {
+                                    // Simulate disconnected node raising term
+                                    set_node3.set(4); // rogue state
+                                    set_node3_term.update(|t| *t += 10);
+                                    set_events.update(|e| e.push(format!("[ROGUE] N3 disconnected, term → {}", node3_term.get() + 10)));
+                                }>"🏴‍☠️ Rogue N3"</button>
+                                <button class="chaos-btn success" on:click=move |_| {
+                                    // Demonstrate PreVote rejection
+                                    if node3.get() == 4 {
+                                        set_events.update(|e| {
+                                            e.push(format!("[PREVOTE] N3 sends PreVote (term={})", node3_term.get()));
+                                            e.push("[PREVOTE] N1: REJECT - leader active ✗".into());
+                                            e.push("[PREVOTE] N2: REJECT - leader active ✗".into());
+                                            e.push("[PREVOTE] ✅ Cluster protected! Term stays unchanged.".into());
+                                        });
+                                        set_node3.set(0); // rejoin as follower
+                                        set_node3_term.set(term.get());
+                                    } else {
+                                        set_events.update(|e| e.push("[PREVOTE] No rogue node to demo".into()));
+                                    }
+                                }>"✨ PreVote Demo"</button>
                                 <button class="chaos-btn" on:click=move |_| {
                                     set_node1.set(1); set_node2.set(0); set_node3.set(0);
                                     set_term.set(1);
+                                    set_node3_term.set(1);
                                     set_events.set(vec![]);
                                     set_kv_out.set(vec![]);
                                 }>"🔄 Reset"</button>

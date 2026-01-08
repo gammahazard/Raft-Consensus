@@ -8,11 +8,17 @@ use serde::{Deserialize, Serialize};
 use crate::{LogEntry, RaftMessage};
 use std::collections::HashMap;
 
-/// the three possible states a raft node can be in
+/// the possible states a raft node can be in
+/// 
+/// includes PreCandidate for the PreVote protocol (Raft thesis Section 9.6)
+/// which prevents disconnected nodes from disrupting the cluster
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeState {
     /// passive state - listens for heartbeats, votes when asked
     Follower,
+    /// pre-election state - gathering pre-votes before incrementing term
+    /// prevents "disruptive server" problem
+    PreCandidate,
     /// transitional state - requesting votes to become leader
     Candidate,
     /// active state - manages log replication, sends heartbeats
@@ -92,6 +98,12 @@ pub struct RaftNode {
     
     /// votes received in current election (candidate only)
     pub votes_received: Vec<u64>,
+    
+    /// pre-votes received (pre-candidate only) - for PreVote protocol
+    pub prevotes_received: Vec<u64>,
+    
+    /// timestamp of last heartbeat received (for PreVote decision)
+    pub last_heartbeat_time: Option<u64>,
 }
 
 impl RaftNode {
@@ -110,6 +122,8 @@ impl RaftNode {
             cluster_nodes,
             config: RaftConfig::default(),
             votes_received: Vec::new(),
+            prevotes_received: Vec::new(),
+            last_heartbeat_time: None,
         }
     }
     
@@ -127,17 +141,114 @@ impl RaftNode {
         (self.cluster_nodes.len() / 2) + 1
     }
     
-    /// check if we have enough votes to become leader
-    pub fn has_quorum(&self) -> bool {
-        self.votes_received.len() >= self.quorum_size()
+    /// check if we have enough pre-votes to proceed with real election
+    pub fn has_prevote_quorum(&self) -> bool {
+        self.prevotes_received.len() >= self.quorum_size()
     }
     
-    /// start an election: become candidate, increment term, vote for self
+    /// start pre-vote phase (Raft thesis Section 9.6)
+    /// 
+    /// this prevents the "disruptive server" problem:
+    /// - disconnected node keeps timing out and incrementing term
+    /// - when it rejoins, high term forces leader to step down
+    /// - with prevote, disconnected node asks "would you vote for me?"
+    /// - other nodes say "no, we have a leader" and rogue node stays quiet
+    pub fn start_prevote(&mut self) -> RaftMessage {
+        self.state = NodeState::PreCandidate;
+        self.prevotes_received = vec![self.id]; // pre-vote for ourselves
+        
+        // ask for pre-votes WITHOUT incrementing term
+        // we use current_term + 1 as the "proposed" term
+        RaftMessage::PreVoteRequest {
+            term: self.current_term + 1, // what we WOULD use, but don't commit yet
+            candidate_id: self.id,
+            last_log_index: self.last_log_index(),
+            last_log_term: self.last_log_term(),
+        }
+    }
+    
+    /// handle a pre-vote request from another node
+    /// 
+    /// returns (response, should_reset_election_timer)
+    pub fn handle_prevote_request(
+        &mut self,
+        term: u64,
+        candidate_id: u64,
+        last_log_index: u64,
+        last_log_term: u64,
+    ) -> (RaftMessage, bool) {
+        // key insight: we grant pre-vote if:
+        // 1. proposed term >= our current term
+        // 2. candidate's log is at least as up-to-date as ours
+        // 3. we haven't heard from a leader recently (otherwise, no need for election)
+        
+        let our_last_term = self.last_log_term();
+        let our_last_index = self.last_log_index();
+        
+        // check if candidate's log is at least as up-to-date
+        let log_ok = (last_log_term > our_last_term) 
+            || (last_log_term == our_last_term && last_log_index >= our_last_index);
+        
+        // check if we've heard from leader recently
+        // (if we have, we don't need an election - leader is alive)
+        let heard_from_leader_recently = self.last_heartbeat_time.is_some() 
+            && self.state != NodeState::Candidate 
+            && self.state != NodeState::PreCandidate;
+        
+        // don't grant pre-vote if we have a healthy leader
+        // this is the KEY to preventing disruptive servers
+        let vote_granted = term >= self.current_term 
+            && log_ok 
+            && !heard_from_leader_recently;
+        
+        let response = RaftMessage::PreVoteResponse {
+            term: self.current_term,
+            vote_granted,
+        };
+        
+        // don't reset election timer for pre-vote (it's just a query)
+        (response, false)
+    }
+    
+    /// handle a pre-vote response
+    /// 
+    /// returns true if we should now start a real election
+    pub fn handle_prevote_response(
+        &mut self, 
+        term: u64, 
+        vote_granted: bool, 
+        from_node: u64
+    ) -> bool {
+        // only process if we're still a pre-candidate
+        if self.state != NodeState::PreCandidate {
+            return false;
+        }
+        
+        // if responder has higher term, something's wrong but don't step down
+        // (pre-vote responses don't affect our term)
+        
+        if vote_granted {
+            if !self.prevotes_received.contains(&from_node) {
+                self.prevotes_received.push(from_node);
+            }
+            
+            // if we have a majority of pre-votes, start real election
+            if self.has_prevote_quorum() {
+                return true;
+            }
+        }
+        
+        false
+    }
+    
+    /// start a real election (only after successful pre-vote!)
+    /// become candidate, increment term, vote for self
     pub fn start_election(&mut self) -> RaftMessage {
         self.state = NodeState::Candidate;
         self.current_term += 1;
         self.voted_for = Some(self.id);
         self.votes_received = vec![self.id]; // vote for ourselves
+        self.prevotes_received.clear();
         
         // create vote request to send to all peers
         RaftMessage::VoteRequest {
@@ -169,6 +280,22 @@ impl RaftNode {
         self.current_term = term;
         self.voted_for = None;
         self.votes_received.clear();
+        self.prevotes_received.clear();
+    }
+    
+    /// check if we have enough votes to become leader
+    pub fn has_quorum(&self) -> bool {
+        self.votes_received.len() >= self.quorum_size()
+    }
+    
+    /// record that we heard from the leader (for PreVote decisions)
+    pub fn record_heartbeat(&mut self, current_time: u64) {
+        self.last_heartbeat_time = Some(current_time);
+    }
+    
+    /// clear heartbeat timestamp (for testing or when leader is suspected dead)
+    pub fn clear_heartbeat(&mut self) {
+        self.last_heartbeat_time = None;
     }
     
     // -- log helpers --
