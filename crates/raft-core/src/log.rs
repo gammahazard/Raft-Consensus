@@ -7,8 +7,6 @@
 use serde::{Deserialize, Serialize};
 
 /// A single entry in the replicated log
-/// 
-/// TODO: Implement log management in Phase 2 (feature/raft-core)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     /// The term when this entry was created
