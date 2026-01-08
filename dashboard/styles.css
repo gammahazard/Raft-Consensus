@@ -22,13 +22,13 @@
     padding: 0;
 }
 
-/* Instant tooltips */
-[title] {
+/* Instant tooltips - use data-tip to avoid browser's native tooltip */
+[data-tip] {
     position: relative;
 }
 
-[title]:hover::after {
-    content: attr(title);
+[data-tip]:hover::after {
+    content: attr(data-tip);
     position: absolute;
     bottom: 100%;
     left: 50%;
@@ -38,13 +38,13 @@
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
     font-size: 0.75rem;
-    white-space: nowrap;
     z-index: 1000;
     border: 1px solid var(--border);
     margin-bottom: 5px;
-    max-width: 250px;
+    max-width: 280px;
     white-space: normal;
     text-align: center;
+    pointer-events: none;
 }
 
 body {
@@ -186,6 +186,23 @@ body {
     font-size: 0.75rem;
     color: var(--text-dim);
     text-transform: uppercase;
+}
+
+.node .log {
+    font-size: 0.65rem;
+    color: var(--green);
+    margin-top: 0.25rem;
+}
+
+.node .log.behind {
+    color: var(--orange);
+    font-weight: bold;
+}
+
+.node .restart-time {
+    font-size: 0.6rem;
+    color: var(--blue);
+    margin-top: 0.25rem;
 }
 
 .node.leader {
