@@ -11,6 +11,11 @@ serde.workspace = true
 serde_json.workspace = true
 raft-core = { path = "../raft-core" }
 raft-storage = { path = "../raft-storage" }
+wit-bindgen = "0.36"
+wit-bindgen-rt = "0.36"
 
-# WASM-specific dependencies (to be added in Phase 1)
-# wit-bindgen = "0.22"
+[package.metadata.component]
+package = "raft:consensus"
+target = { path = "../../wit" }
+
+[package.metadata.component.dependencies]

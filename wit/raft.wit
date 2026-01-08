@@ -1,0 +1,97 @@
+// WIT definition for Raft WASI component
+package raft:consensus;
+
+interface types {
+    enum node-state {
+        follower,
+        candidate,
+        leader,
+        dead,
+    }
+    
+    record pre-vote-request {
+        term: u64,
+        candidate-id: u64,
+        last-log-index: u64,
+        last-log-term: u64,
+    }
+    
+    record pre-vote-response {
+        term: u64,
+        vote-granted: bool,
+    }
+    
+    record vote-request {
+        term: u64,
+        candidate-id: u64,
+        last-log-index: u64,
+        last-log-term: u64,
+    }
+    
+    record vote-response {
+        term: u64,
+        vote-granted: bool,
+    }
+    
+    record log-entry {
+        term: u64,
+        index: u64,
+        command: list<u8>,
+    }
+    
+    record append-entries {
+        term: u64,
+        leader-id: u64,
+        prev-log-index: u64,
+        prev-log-term: u64,
+        entries: list<log-entry>,
+        leader-commit: u64,
+    }
+    
+    record append-entries-response {
+        term: u64,
+        success: bool,
+    }
+    
+    variant raft-message {
+        pre-vote-req(pre-vote-request),
+        pre-vote-res(pre-vote-response),
+        vote-req(vote-request),
+        vote-res(vote-response),
+        append-req(append-entries),
+        append-res(append-entries-response),
+    }
+    
+    record node-status {
+        id: u64,
+        state: node-state,
+        term: u64,
+        log-length: u64,
+        commit-index: u64,
+    }
+}
+
+interface host {
+    use types.{raft-message, log-entry};
+    
+    send-message: func(to-node: u64, msg: raft-message);
+    persist-state: func(term: u64, voted-for: option<u64>);
+    persist-log: func(entries: list<log-entry>);
+    now-ms: func() -> u64;
+    random-timeout: func(min-ms: u64, max-ms: u64) -> u64;
+}
+
+interface raft-api {
+    use types.{node-status, raft-message};
+    
+    init: func(node-id: u64, node-ids: list<u64>);
+    tick: func() -> node-status;
+    on-message: func(from-node: u64, msg: raft-message);
+    submit-command: func(command: list<u8>) -> bool;
+    get-status: func() -> node-status;
+}
+
+world raft-node {
+    import host;
+    export raft-api;
+}
