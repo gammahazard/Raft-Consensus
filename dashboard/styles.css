@@ -159,39 +159,44 @@ body {
 .nodes {
     display: flex;
     justify-content: center;
-    gap: 1.5rem;
+    gap: 1rem;
 }
 
 .node {
     text-align: center;
-    padding: 1rem;
+    padding: 1rem 0.75rem;
     background: var(--bg);
     border: 2px solid var(--border);
     border-radius: 12px;
-    min-width: 100px;
+    width: 110px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     transition: all 0.2s;
 }
 
 .node .emoji {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.75rem;
+    margin-bottom: 0.25rem;
 }
 
 .node .name {
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
 }
 
 .node .state {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     color: var(--text-dim);
     text-transform: uppercase;
+    margin-top: 0.15rem;
 }
 
 .node .log {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     color: var(--green);
-    margin-top: 0.25rem;
+    margin-top: 0.5rem;
+    font-weight: 500;
 }
 
 .node .log.behind {
@@ -200,9 +205,10 @@ body {
 }
 
 .node .restart-time {
-    font-size: 0.6rem;
-    color: var(--blue);
-    margin-top: 0.25rem;
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    opacity: 0.7;
+    margin-top: 0.2rem;
 }
 
 .node.leader {

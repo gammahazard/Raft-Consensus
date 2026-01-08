@@ -334,12 +334,12 @@ pub fn App() -> impl IntoView {
                         <div class="card-title" style="margin-top:1rem">"🏴‍☠️ Disruptive Server"</div>
                         <p class="help-text">"A disconnected node inflates its term. PreVote blocks it."</p>
                         <div class="controls">
-                            <button class="btn orange" data-tip="Disconnect N3. It inflates term to 50."
+                            <button class="btn orange" data-tip="Partition N3. Its LOCAL term rises to 50 (shown on card). PreVote prevents it disrupting cluster."
                                 disabled=move || node3.get() == 4
                                 on:click=move |_| {
                                     set_node3.set(4);
                                     set_rogue_term.set(50);
-                                    set_events.update(|e| e.push("🏴‍☠️ N3 partitioned (term→50)".into()));
+                                    set_events.update(|e| e.push("🏴‍☠️ N3 partitioned (its term→50)".into()));
                                 }>"🔌 Disconnect N3"</button>
                             <button class="btn green" data-tip="N3 tries to rejoin. PreVote rejects its high term."
                                 disabled=move || node3.get() != 4
@@ -431,7 +431,7 @@ pub fn App() -> impl IntoView {
                         <div class="metrics">
                             <div class="metric" data-tip="WASM module init time">
                                 <div class="value">{move || format!("{:.1}", wasm_init_ms.get())}</div>
-                                <div class="label">"Init (ms)"</div>
+                                <div class="label">"WASM Load"</div>
                             </div>
                             <div class="metric" data-tip="Raft term. Increments each election.">
                                 <div class="value">{term}</div>
