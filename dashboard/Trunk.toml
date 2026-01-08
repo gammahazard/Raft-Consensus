@@ -1,8 +1,0 @@
-[build]
-target = "index.html"
-dist = "dist"
-
-[[hooks]]
-stage = "pre_build"
-command = "powershell"
-command_arguments = ["-Command", "if(!(Test-Path 'assets')) { New-Item -ItemType Directory -Path 'assets' }; Copy-Item '../shim/*.js' 'assets/' -Force"]
