@@ -240,7 +240,9 @@ pub fn App() -> impl IntoView {
                         <div class="card-title">"🎮 Controls"</div>
                         <div class="controls">
                             // Kill buttons
-                            <button class="btn red" disabled=move || node1.get() == 3
+                            <button class="btn red" 
+                                title="Simulate node crash. If leader, triggers election."
+                                disabled=move || node1.get() == 3
                                 on:click=move |_| {
                                     let was_leader = node1.get() == 1;
                                     set_node1.set(3);
@@ -248,7 +250,9 @@ pub fn App() -> impl IntoView {
                                     if was_leader { trigger_election(1); }
                                     schedule_auto_restart(1);
                                 }>"💀 Kill N1"</button>
-                            <button class="btn red" disabled=move || node2.get() == 3
+                            <button class="btn red" 
+                                title="Simulate node crash. If leader, triggers election."
+                                disabled=move || node2.get() == 3
                                 on:click=move |_| {
                                     let was_leader = node2.get() == 1;
                                     set_node2.set(3);
@@ -256,7 +260,9 @@ pub fn App() -> impl IntoView {
                                     if was_leader { trigger_election(2); }
                                     schedule_auto_restart(2);
                                 }>"💀 Kill N2"</button>
-                            <button class="btn red" disabled=move || node3.get() == 3 || node3.get() == 4
+                            <button class="btn red" 
+                                title="Simulate node crash. If leader, triggers election."
+                                disabled=move || node3.get() == 3 || node3.get() == 4
                                 on:click=move |_| {
                                     let was_leader = node3.get() == 1;
                                     set_node3.set(3);
@@ -266,7 +272,9 @@ pub fn App() -> impl IntoView {
                                 }>"💀 Kill N3"</button>
                             
                             // Restart buttons
-                            <button class="btn blue" disabled=move || node1.get() != 3
+                            <button class="btn blue" 
+                                title="Restart dead node. Shows fast WASM restart time and log catch-up."
+                                disabled=move || node1.get() != 3
                                 on:click=move |_| {
                                     let start = now();
                                     set_node1.set(0);
@@ -278,7 +286,9 @@ pub fn App() -> impl IntoView {
                                         }
                                     });
                                 }>"🔄 Restart N1"</button>
-                            <button class="btn blue" disabled=move || node2.get() != 3
+                            <button class="btn blue" 
+                                title="Restart dead node. Shows fast WASM restart time and log catch-up."
+                                disabled=move || node2.get() != 3
                                 on:click=move |_| {
                                     let start = now();
                                     set_node2.set(0);
@@ -290,7 +300,9 @@ pub fn App() -> impl IntoView {
                                         }
                                     });
                                 }>"🔄 Restart N2"</button>
-                            <button class="btn blue" disabled=move || node3.get() != 3
+                            <button class="btn blue" 
+                                title="Restart dead node. Shows fast WASM restart time and log catch-up."
+                                disabled=move || node3.get() != 3
                                 on:click=move |_| {
                                     let start = now();
                                     set_node3.set(0);
@@ -304,13 +316,16 @@ pub fn App() -> impl IntoView {
                                 }>"🔄 Restart N3"</button>
                         </div>
                         
-                        // PreVote demo - simplified!
-                        <div class="card-title" style="margin-top: 1rem">"🏴‍☠️ Rogue Node Demo"</div>
+                        // PreVote demo
+                        <div class="card-title" style="margin-top: 1rem">"🏴‍☠️ Disruptive Server Demo"</div>
                         <p class="help-text">
-                            "Simulates a node that got disconnected, kept timing out, and inflated its term to 50."
+                            "A disconnected node keeps timing out and incrementing its term. "
+                            "Without PreVote, it would disrupt the cluster when it rejoins. "
+                            "With PreVote, healthy nodes reject its high term."
                         </p>
                         <div class="controls">
                             <button class="btn orange" 
+                                title="Disconnect N3 from cluster. It starts inflating its term (1→50) trying to become leader."
                                 disabled=move || node3.get() == 4
                                 on:click=move |_| {
                                     set_node3.set(4);
@@ -322,17 +337,19 @@ pub fn App() -> impl IntoView {
                                         e.push("   Term inflating: 1 → 10 → 25 → 50".into());
                                         e.push("─────────────────────────────────────".into());
                                     });
-                                }>"🏴‍☠️ Partition N3"</button>
+                                }>"🔌 Disconnect N3"</button>
                             <button class="btn green"
+                                title="N3 tries to rejoin. PreVote protocol asks 'would you vote for me?' — healthy nodes say NO because they have a leader."
                                 disabled=move || node3.get() != 4
                                 on:click=move |_| rogue_rejoins()
-                            >"✨ Reconnect (PreVote)"</button>
+                            >"✨ Heal & Rejoin"</button>
                         </div>
                         
                         // Watchdog toggle + Reset
                         <div class="card-title" style="margin-top: 1rem">"⚙️ Settings"</div>
                         <div class="controls">
                             <button class="btn" 
+                                title="Simulates systemd/K8s watchdog. When ON, dead nodes auto-restart after 1 second."
                                 class:active=auto_restart
                                 on:click=move |_| {
                                     set_auto_restart.update(|v| *v = !*v);
@@ -346,7 +363,9 @@ pub fn App() -> impl IntoView {
                                 }>
                                 {move || if auto_restart.get() { "🟢 Watchdog ON" } else { "⚪ Watchdog OFF" }}
                             </button>
-                            <button class="btn" on:click=move |_| {
+                            <button class="btn" 
+                                title="Reset cluster to initial state: N1 as leader, term=1, clear all logs."
+                                on:click=move |_| {
                                 set_node1.set(1); set_node2.set(0); set_node3.set(0);
                                 set_term.set(1); set_log_index.set(0); set_rogue_term.set(1);
                                 set_auto_restart.set(false);
@@ -361,7 +380,11 @@ pub fn App() -> impl IntoView {
                     
                     // KV Store
                     <div class="card">
-                        <div class="card-title">"💾 Key-Value Store"</div>
+                        <div class="card-title">"💾 Replicated State Machine"</div>
+                        <p class="help-text">
+                            "This is Raft's state machine. Commands (SET/GET) go through consensus: "
+                            "Leader replicates to followers → majority ACK → committed to log."
+                        </p>
                         <KvStore 
                             kv_out set_kv_out 
                             has_leader has_quorum
@@ -377,19 +400,19 @@ pub fn App() -> impl IntoView {
                     <div class="card">
                         <div class="card-title">"⚡ Metrics"</div>
                         <div class="metrics">
-                            <div class="metric">
+                            <div class="metric" title="Time to initialize WASM module. Real measurement from browser runtime.">
                                 <div class="value">{move || format!("{:.1}", wasm_init_ms.get())}</div>
                                 <div class="label">"WASM Init (ms)"</div>
                             </div>
-                            <div class="metric">
+                            <div class="metric" title="Raft election term. Increments with each new election. Higher = more elections happened.">
                                 <div class="value">{term}</div>
                                 <div class="label">"Term"</div>
                             </div>
-                            <div class="metric">
+                            <div class="metric" title="Number of entries in the replicated log. Each KV command adds one entry.">
                                 <div class="value">{log_index}</div>
                                 <div class="label">"Log Index"</div>
                             </div>
-                            <div class="metric">
+                            <div class="metric" title="Nodes currently running. Need 2/3 for quorum (majority).">
                                 <div class="value">{move || format!("{}/3", alive_count())}</div>
                                 <div class="label">"Alive"</div>
                             </div>
