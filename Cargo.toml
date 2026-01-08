@@ -4,6 +4,7 @@ members = [
     "crates/raft-core",
     "crates/raft-storage",
     "crates/raft-wasm",
+    "dashboard",
 ]
 
 [workspace.package]
