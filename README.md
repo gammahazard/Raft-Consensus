@@ -241,7 +241,7 @@ This project is part of a **Reliability Triad** demonstrating industrial-grade s
 |---------|-------------------|-----------|
 | [ICS Guardian](https://github.com/gammahazard/vanguard-ics-guardian) | "I ensure the connection is safe." | Capability isolation |
 | [Protocol Gateway](https://github.com/gammahazard/protocol-gateway-sandbox) | "I ensure the parser is crash-proof." | 2oo3 TMR voting |
-| **Raft Cluster** | "I ensure the system state is consistent." | Distributed consensus |
+| [**Raft Cluster**](https://github.com/gammahazard/Raft-Consensus) | "I ensure the system state is consistent." | Distributed consensus |
 
 ## 🌿 Branch Strategy
 
