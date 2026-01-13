@@ -346,11 +346,16 @@ The same `raft.wasm` binary will run on a real 3-node Raspberry Pi cluster:
 
 This project is part of a **Reliability Triad** demonstrating industrial-grade systems engineering:
 
-| Project | Reliability Story | Mechanism |
-|---------|-------------------|-----------|
-| [ICS Guardian](https://github.com/gammahazard/vanguard-ics-guardian) | "I ensure the connection is safe." | Capability isolation |
-| [Protocol Gateway](https://github.com/gammahazard/protocol-gateway-sandbox) | "I ensure the parser is crash-proof." | 2oo3 TMR voting |
-| [**Raft Cluster**](https://github.com/gammahazard/Raft-Consensus) | "I ensure the system state is consistent." | Distributed consensus |
+| Project | Reliability Story | Demo |
+|---------|-------------------|------|
+| [ICS Guardian](https://github.com/gammahazard/vanguard-ics-guardian) | Capability-based isolation | [Live Demo](https://vanguard-ics-guardian.vercel.app) |
+| [Protocol Gateway](https://github.com/gammahazard/protocol-gateway-sandbox) | 2oo3 TMR crash recovery | [Live Demo](https://protocol-gateway-sandbox.vercel.app) |
+| **Raft Cluster** (this) | Distributed consensus | [Live Demo](https://raft-consensus.vercel.app) |
+| [Guardian-One](https://github.com/gammahazard/guardian-one) | **Hardware implementation** | *Private - in development* |
+
+> **Guardian-One** is the hardware implementation of these concepts — a Rust/Wasmtime host running on Raspberry Pi 4 with BME280 sensors, SainSmart relays, and a 3-node Raft cluster for fault tolerance. Hardware demo coming soon.
+>
+> **Note:** This Raft implementation is a learning demonstration. For production deployments, Guardian-One will integrate an industry-standard Raft library like `openraft` or `raft-rs`.
 
 ## 🌿 Branch Strategy
 
