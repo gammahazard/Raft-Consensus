@@ -45,13 +45,15 @@ This guide documents the planned hardware demonstration of the Unsinkable Raft C
 
 ## Network Configuration
 
-All nodes communicate over WiFi on static IP addresses:
+All nodes communicate over the **Industrial Zone** network (isolated from management network):
 
 | Node | Hostname | IP Address | Role |
 |------|----------|------------|------|
-| Pi 4 | `raft-node-1` | `192.168.1.101` | Primary |
-| Pi Zero #1 | `raft-node-2` | `192.168.1.102` | Follower |
-| Pi Zero #2 | `raft-node-3` | `192.168.1.103` | Follower |
+| Pi 4 | `guardian-node-1` | `192.168.40.4` | Primary (Leader) |
+| Pi Zero #1 | `guardian-node-2` | `192.168.40.X` | Follower |
+| Pi Zero #2 | `guardian-node-3` | `192.168.40.X` | Follower |
+
+> **Note:** Pi Zero 2W nodes arriving soon. IPs will be assigned in the 192.168.40.x industrial zone, segmented via UniFi Switch Lite 8 PoE.
 
 ### Static IP Setup (each node)
 
@@ -59,8 +61,8 @@ Edit `/etc/dhcpcd.conf`:
 
 ```bash
 interface wlan0
-static ip_address=192.168.1.10X/24
-static routers=192.168.1.1
+static ip_address=192.168.40.X/24
+static routers=192.168.40.1
 static domain_name_servers=8.8.8.8
 ```
 
@@ -98,10 +100,10 @@ Create empty file named `ssh` (no extension) on boot partition.
 
 ```bash
 # Find Pi on network
-ping raft-node-2.local
+ping guardian-node-2.local
 
 # SSH in
-ssh pi@raft-node-2.local
+ssh pi@guardian-node-2.local
 ```
 
 ## Software Setup
